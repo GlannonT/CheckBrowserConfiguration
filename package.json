@@ -1,0 +1,16 @@
+{
+  "name": "rtc-system-check",
+  "version": "1.0.0",
+  "description": "Web RTC System Requirements Check",
+  "main": "index.html",
+  "scripts": {
+    "dev": "python3 -m http.server 8080",
+    "serve": "npx serve . -p 8080"
+  },
+  "keywords": ["rtc", "web", "volcengine"],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "@volcengine/rtc": "^4.0.0"
+  }
+}
