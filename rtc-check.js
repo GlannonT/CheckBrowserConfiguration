@@ -246,8 +246,8 @@ async function initEngine() {
                 isRecording = false;
             } else if (state === 3) {
                 log(`音频录制失败: ${error}`, 'error');
-                addTestItem('audio-section', '麦克风状态', `失败: ${error}`, 'error');
-                setSectionIcon('audio', 'error');
+                // addTestItem('audio-section', '麦克风状态', `失败: ${error}`, 'error');
+                // setSectionIcon('audio', 'error');
             }
         });
 
@@ -421,8 +421,8 @@ async function checkDeviceCapability() {
         const audioOutputs = devices.filter(d => d.kind === 'audiooutput');
         const videoInputs = devices.filter(d => d.kind === 'videoinput');
         
-        addTestItem('device-section', '麦克风数量', audioInputs.length.toString(), audioInputs.length > 0 ? 'success' : 'error');
-        addTestItem('device-section', '扬声器数量', audioOutputs.length.toString(), audioOutputs.length > 0 ? 'success' : 'warning');
+        // addTestItem('device-section', '麦克风数量', audioInputs.length.toString(), audioInputs.length > 0 ? 'success' : 'error');
+        // addTestItem('device-section', '扬声器数量', audioOutputs.length.toString(), audioOutputs.length > 0 ? 'success' : 'warning');
         addTestItem('device-section', '摄像头数量', videoInputs.length.toString(), videoInputs.length > 0 ? 'success' : 'error');
         
         if (audioInputs.length > 0) {
@@ -618,9 +618,9 @@ async function startAudioCapture() {
             const btnStopCapture = document.getElementById('btn-stop-capture');
             if (btnStartCapture) btnStartCapture.disabled = false;
             if (btnStopCapture) btnStopCapture.disabled = true;
-            addTestItem('audio-section', '麦克风状态', '异常', 'error');
-            addTestItem('audio-section', '扬声器状态', '异常', 'error');
-            setSectionIcon('audio', 'error');
+            // addTestItem('audio-section', '麦克风状态', '异常', 'error');
+            // addTestItem('audio-section', '扬声器状态', '异常', 'error');
+            // setSectionIcon('audio', 'error');
             throw error;
         }
         
@@ -632,9 +632,9 @@ async function startAudioCapture() {
         if (btnStartCapture) btnStartCapture.disabled = false;
         if (btnStopCapture) btnStopCapture.disabled = true;
         log(`麦克风采集失败: ${error.message}`, 'error');
-        addTestItem('audio-section', '麦克风状态', '异常', 'error');
-        addTestItem('audio-section', '扬声器状态', '异常', 'error');
-        setSectionIcon('audio', 'error');
+        // addTestItem('audio-section', '麦克风状态', '异常', 'error');
+        // addTestItem('audio-section', '扬声器状态', '异常', 'error');
+        // setSectionIcon('audio', 'error');
     }
 }
 
@@ -678,7 +678,7 @@ async function stopAudioCaptureAndPlay() {
             micStatusType = 'success';
         }
         
-        addTestItem('audio-section', '麦克风状态', micStatus, micStatusType);
+        // addTestItem('audio-section', '麦克风状态', micStatus, micStatusType);
         
         if (engine) {
             console.log('[调用] engine.stopAudioDeviceRecordAndPlayTest');
@@ -693,8 +693,8 @@ async function stopAudioCaptureAndPlay() {
                 const btnStopCapture = document.getElementById('btn-stop-capture');
                 if (btnStartCapture) btnStartCapture.disabled = false;
                 if (btnStopCapture) btnStopCapture.disabled = true;
-                addTestItem('audio-section', '扬声器状态', '异常', 'error');
-                setSectionIcon('audio', 'error');
+                // addTestItem('audio-section', '扬声器状态', '异常', 'error');
+                // setSectionIcon('audio', 'error');
                 throw error;
             }
         }
@@ -710,16 +710,16 @@ async function stopAudioCaptureAndPlay() {
             log(`扬声器判定 - hasPlaybackVolume: ${hasPlaybackVolume}`, 'info');
             
             if (hasPlaybackVolume) {
-                addTestItem('audio-section', '扬声器状态', '成功', 'success');
-                setSectionIcon('audio', 'success');
+                // addTestItem('audio-section', '扬声器状态', '成功', 'success');
+                // setSectionIcon('audio', 'success');
             } else {
-                addTestItem('audio-section', '扬声器状态', '异常', 'error');
-                setSectionIcon('audio', 'error');
+                // addTestItem('audio-section', '扬声器状态', '异常', 'error');
+                // setSectionIcon('audio', 'error');
             }
         } else {
             log('扬声器判定 - 麦克风状态异常，扬声器状态也设为异常', 'info');
-            addTestItem('audio-section', '扬声器状态', '异常', 'error');
-            setSectionIcon('audio', 'error');
+            // addTestItem('audio-section', '扬声器状态', '异常', 'error');
+            // setSectionIcon('audio', 'error');
         }
         
         // 重置状态，允许再次测试
@@ -750,9 +750,9 @@ async function checkSpeakerPlayback(deviceTestPassed = true) {
     log('开始音频检测准备...', 'info');
     
     if (!deviceTestPassed) {
-        addTestItem('audio-section', '麦克风状态', '异常', 'error');
-        addTestItem('audio-section', '扬声器状态', '异常', 'error');
-        setSectionIcon('audio', 'error');
+        // addTestItem('audio-section', '麦克风状态', '异常', 'error');
+        // addTestItem('audio-section', '扬声器状态', '异常', 'error');
+        // setSectionIcon('audio', 'error');
         log('前置设备检测失败，音频检测标记为失败', 'error');
         return false;
     }
@@ -760,9 +760,9 @@ async function checkSpeakerPlayback(deviceTestPassed = true) {
     if (!engine) {
         const initialized = await initEngine();
         if (!initialized) {
-            addTestItem('audio-section', '麦克风状态', '异常', 'error');
-            addTestItem('audio-section', '扬声器状态', '异常', 'error');
-            setSectionIcon('audio', 'error');
+            // addTestItem('audio-section', '麦克风状态', '异常', 'error');
+            // addTestItem('audio-section', '扬声器状态', '异常', 'error');
+            // setSectionIcon('audio', 'error');
             return false;
         }
     }
