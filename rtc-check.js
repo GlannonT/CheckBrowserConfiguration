@@ -423,10 +423,6 @@ async function checkBrowserCompatibility() {
         addTestItem('browser-section', 'UDP协议', hasUdpSupport ? '支持' : '不支持', hasUdpSupport ? 'success' : 'warning');
         log(`UDP协议: ${hasUdpSupport ? '支持' : '不支持'}`, hasUdpSupport ? 'success' : 'warning');
         
-        const hasTcpSupport = true;
-        addTestItem('browser-section', 'TCP协议', hasTcpSupport ? '支持' : '不支持', hasTcpSupport ? 'success' : 'warning');
-        log(`TCP协议: ${hasTcpSupport ? '支持' : '不支持'}`, hasTcpSupport ? 'success' : 'warning');
-        
         pc.close();
     }
     
