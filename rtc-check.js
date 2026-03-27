@@ -20,6 +20,12 @@ let playbackCompleteCheck = null;
 let hasPlaybackVolume = false;
 let lastPlaybackVolumeTime = 0;
 let isCaptureFailed = false;
+let isIPhone = false;
+let webAudioAnalyser = null;
+let webAudioContext = null;
+let webAudioSource = null;
+let hasWebAudioVolume = false;
+let webAudioAnimationId = null;
 
 function log(message, type = 'info') {
     const logContainer = document.getElementById('logContainer');
@@ -167,10 +173,12 @@ function resetAudioSection() {
     
     stopCaptureAnimation();
     stopPlaybackAnimation();
+    stopWebAudioMonitoring();
     isDeviceTestRunning = false;
     isCaptureTestSuccess = false;
     hasLocalAudioReport = false;
     hasPlaybackVolume = false;
+    hasWebAudioVolume = false;
     lastPlaybackVolumeTime = 0;
     isCaptureFailed = false;
     if (playbackCompleteCheck) {
@@ -246,8 +254,8 @@ async function initEngine() {
                 isRecording = false;
             } else if (state === 3) {
                 log(`音频录制失败: ${error}`, 'error');
-                // addTestItem('audio-section', '麦克风状态', `失败: ${error}`, 'error');
-                // setSectionIcon('audio', 'error');
+                addTestItem('audio-section', '麦克风状态', `失败: ${error}`, 'error');
+                setSectionIcon('audio', 'error');
             }
         });
 
@@ -299,6 +307,30 @@ function getBrowserInfo() {
         browserName = 'QQ浏览器';
         const match = ua.match(/(?:MQQ|QQ)Browser\/([\d.]+)/);
         if (match) browserVersion = match[1];
+    } else if (ua.indexOf('SogouMobileBrowser') > -1 || ua.indexOf('Sogou') > -1) {
+        browserName = '搜狗浏览器';
+        const match = ua.match(/SogouMobileBrowser\/([\d.]+)/) || ua.match(/Sogou\/([\d.]+)/);
+        if (match) browserVersion = match[1];
+    } else if (ua.indexOf('Baidu') > -1 || ua.indexOf('BDBrowser') > -1) {
+        browserName = '百度浏览器';
+        const match = ua.match(/BDBrowser\/([\d.]+)/) || ua.match(/Baidu\/([\d.]+)/);
+        if (match) browserVersion = match[1];
+    } else if (ua.indexOf('360SE') > -1 || ua.indexOf('360EE') > -1) {
+        browserName = '360浏览器';
+        const match = ua.match(/360SE\/([\d.]+)/) || ua.match(/360EE\/([\d.]+)/);
+        if (match) browserVersion = match[1];
+    } else if (ua.indexOf('LieBao') > -1 || ua.indexOf('LBBROWSER') > -1) {
+        browserName = '猎豹浏览器';
+        const match = ua.match(/LBBROWSER\/([\d.]+)/);
+        if (match) browserVersion = match[1];
+    } else if (ua.indexOf('Opera') > -1 || ua.indexOf('OPR') > -1) {
+        browserName = 'Opera';
+        const match = ua.match(/Opera\/([\d.]+)/) || ua.match(/OPR\/([\d.]+)/);
+        if (match) browserVersion = match[1];
+    } else if (ua.indexOf('Vivaldi') > -1) {
+        browserName = 'Vivaldi';
+        const match = ua.match(/Vivaldi\/([\d.]+)/);
+        if (match) browserVersion = match[1];
     } else if (ua.indexOf('Firefox') > -1) {
         browserName = 'Firefox';
         const match = ua.match(/Firefox\/([\d.]+)/);
@@ -318,6 +350,83 @@ function getBrowserInfo() {
     }
 
     return { name: browserName, version: browserVersion, userAgent: ua };
+}
+
+function isIPhoneDevice() {
+    const ua = navigator.userAgent;
+    return ua.indexOf('iPhone') > -1 || ua.indexOf('iPad') > -1 || ua.indexOf('iPod') > -1;
+}
+
+function initWebAudio() {
+    try {
+        webAudioContext = new (window.AudioContext || window.webkitAudioContext)();
+        webAudioAnalyser = webAudioContext.createAnalyser();
+        webAudioAnalyser.fftSize = 256;
+        return true;
+    } catch (error) {
+        log(`Web Audio API 初始化失败: ${error.message}`, 'error');
+        return false;
+    }
+}
+
+function startWebAudioMonitoring(audioElement) {
+    try {
+        if (!webAudioContext) {
+            initWebAudio();
+        }
+        
+        if (!webAudioContext || !webAudioAnalyser) {
+            return;
+        }
+        
+        webAudioSource = webAudioContext.createMediaElementSource(audioElement);
+        webAudioSource.connect(webAudioAnalyser);
+        webAudioAnalyser.connect(webAudioContext.destination);
+        
+        hasWebAudioVolume = false;
+        analyseWebAudio();
+    } catch (error) {
+        log(`Web Audio 监控启动失败: ${error.message}`, 'error');
+    }
+}
+
+function analyseWebAudio() {
+    const bufferLength = webAudioAnalyser.frequencyBinCount;
+    const dataArray = new Uint8Array(bufferLength);
+    
+    function update() {
+        webAudioAnalyser.getByteFrequencyData(dataArray);
+        
+        let sum = 0;
+        for (let i = 0; i < bufferLength; i++) {
+            sum += dataArray[i];
+        }
+        const average = sum / bufferLength;
+        
+        const volume = Math.min(255, average * 2);
+        updateWaveBars('playback-wave-container', volume / 255);
+        
+        if (volume > 10 && !hasWebAudioVolume) {
+            hasWebAudioVolume = true;
+            log(`Web Audio 检测到音量: ${volume}`, 'info');
+        }
+        
+        webAudioAnimationId = requestAnimationFrame(update);
+    }
+    
+    update();
+}
+
+function stopWebAudioMonitoring() {
+    if (webAudioAnimationId) {
+        cancelAnimationFrame(webAudioAnimationId);
+        webAudioAnimationId = null;
+    }
+    
+    if (webAudioSource) {
+        webAudioSource.disconnect();
+        webAudioSource = null;
+    }
 }
 
 async function checkBrowserCompatibility() {
@@ -421,8 +530,8 @@ async function checkDeviceCapability() {
         const audioOutputs = devices.filter(d => d.kind === 'audiooutput');
         const videoInputs = devices.filter(d => d.kind === 'videoinput');
         
-        // addTestItem('device-section', '麦克风数量', audioInputs.length.toString(), audioInputs.length > 0 ? 'success' : 'error');
-        // addTestItem('device-section', '扬声器数量', audioOutputs.length.toString(), audioOutputs.length > 0 ? 'success' : 'warning');
+        addTestItem('device-section', '麦克风数量', audioInputs.length.toString(), audioInputs.length > 0 ? 'success' : 'error');
+        addTestItem('device-section', '扬声器数量', audioOutputs.length.toString(), audioOutputs.length > 0 ? 'success' : 'warning');
         addTestItem('device-section', '摄像头数量', videoInputs.length.toString(), videoInputs.length > 0 ? 'success' : 'error');
         
         if (audioInputs.length > 0) {
@@ -618,9 +727,9 @@ async function startAudioCapture() {
             const btnStopCapture = document.getElementById('btn-stop-capture');
             if (btnStartCapture) btnStartCapture.disabled = false;
             if (btnStopCapture) btnStopCapture.disabled = true;
-            // addTestItem('audio-section', '麦克风状态', '异常', 'error');
-            // addTestItem('audio-section', '扬声器状态', '异常', 'error');
-            // setSectionIcon('audio', 'error');
+            addTestItem('audio-section', '麦克风状态', '异常', 'error');
+            addTestItem('audio-section', '扬声器状态', '异常', 'error');
+            setSectionIcon('audio', 'error');
             throw error;
         }
         
@@ -632,15 +741,19 @@ async function startAudioCapture() {
         if (btnStartCapture) btnStartCapture.disabled = false;
         if (btnStopCapture) btnStopCapture.disabled = true;
         log(`麦克风采集失败: ${error.message}`, 'error');
-        // addTestItem('audio-section', '麦克风状态', '异常', 'error');
-        // addTestItem('audio-section', '扬声器状态', '异常', 'error');
-        // setSectionIcon('audio', 'error');
+        addTestItem('audio-section', '麦克风状态', '异常', 'error');
+        addTestItem('audio-section', '扬声器状态', '异常', 'error');
+        setSectionIcon('audio', 'error');
     }
 }
 
 async function stopAudioCaptureAndPlay() {
     try {
         log('停止采集并开始播放...', 'info');
+        
+        // 检测是否为 iPhone 设备
+        isIPhone = isIPhoneDevice();
+        log(`设备类型: ${isIPhone ? 'iPhone' : '其他设备'}`, 'info');
         
         // 如果采集已经失败，直接设置状态为异常
         if (isCaptureFailed) {
@@ -678,13 +791,27 @@ async function stopAudioCaptureAndPlay() {
             micStatusType = 'success';
         }
         
-        // addTestItem('audio-section', '麦克风状态', micStatus, micStatusType);
+        addTestItem('audio-section', '麦克风状态', micStatus, micStatusType);
         
         if (engine) {
             console.log('[调用] engine.stopAudioDeviceRecordAndPlayTest');
             try {
                 await engine.stopAudioDeviceRecordAndPlayTest();
                 console.log('[返回] engine.stopAudioDeviceRecordAndPlayTest 成功');
+                
+                // 如果是 iPhone 设备，尝试使用 Web Audio API 监控音量
+                if (isIPhone) {
+                    log('检测到 iPhone 设备，使用 Web Audio API 监控播放音量', 'info');
+                    
+                    // 查找页面上的 audio 元素
+                    const audioElements = document.querySelectorAll('audio');
+                    if (audioElements.length > 0) {
+                        const audioElement = audioElements[0];
+                        startWebAudioMonitoring(audioElement);
+                    } else {
+                        log('未找到 audio 元素，无法使用 Web Audio API 监控', 'warning');
+                    }
+                }
             } catch (error) {
                 console.log('[错误] engine.stopAudioDeviceRecordAndPlayTest 失败:', error);
                 log(`SDK播放错误: ${error.message}`, 'error');
@@ -693,8 +820,8 @@ async function stopAudioCaptureAndPlay() {
                 const btnStopCapture = document.getElementById('btn-stop-capture');
                 if (btnStartCapture) btnStartCapture.disabled = false;
                 if (btnStopCapture) btnStopCapture.disabled = true;
-                // addTestItem('audio-section', '扬声器状态', '异常', 'error');
-                // setSectionIcon('audio', 'error');
+                addTestItem('audio-section', '扬声器状态', '异常', 'error');
+                setSectionIcon('audio', 'error');
                 throw error;
             }
         }
@@ -707,19 +834,37 @@ async function stopAudioCaptureAndPlay() {
             // 等待一段时间让播放音量事件触发
             await new Promise(resolve => setTimeout(resolve, 2000));
             
-            log(`扬声器判定 - hasPlaybackVolume: ${hasPlaybackVolume}`, 'info');
-            
-            if (hasPlaybackVolume) {
-                // addTestItem('audio-section', '扬声器状态', '成功', 'success');
-                // setSectionIcon('audio', 'success');
+            // 根据设备类型使用不同的判定条件
+            if (isIPhone) {
+                log(`扬声器判定 (iPhone) - hasWebAudioVolume: ${hasWebAudioVolume}`, 'info');
+                
+                if (hasWebAudioVolume) {
+                    addTestItem('audio-section', '扬声器状态', '成功', 'success');
+                    setSectionIcon('audio', 'success');
+                } else {
+                    addTestItem('audio-section', '扬声器状态', '异常', 'error');
+                    setSectionIcon('audio', 'error');
+                }
             } else {
-                // addTestItem('audio-section', '扬声器状态', '异常', 'error');
-                // setSectionIcon('audio', 'error');
+                log(`扬声器判定 - hasPlaybackVolume: ${hasPlaybackVolume}`, 'info');
+                
+                if (hasPlaybackVolume) {
+                    addTestItem('audio-section', '扬声器状态', '成功', 'success');
+                    setSectionIcon('audio', 'success');
+                } else {
+                    addTestItem('audio-section', '扬声器状态', '异常', 'error');
+                    setSectionIcon('audio', 'error');
+                }
             }
         } else {
             log('扬声器判定 - 麦克风状态异常，扬声器状态也设为异常', 'info');
-            // addTestItem('audio-section', '扬声器状态', '异常', 'error');
-            // setSectionIcon('audio', 'error');
+            addTestItem('audio-section', '扬声器状态', '异常', 'error');
+            setSectionIcon('audio', 'error');
+        }
+        
+        // 停止 Web Audio 监控
+        if (isIPhone) {
+            stopWebAudioMonitoring();
         }
         
         // 重置状态，允许再次测试
@@ -733,6 +878,7 @@ async function stopAudioCaptureAndPlay() {
         isDeviceTestRunning = false;
         const btnStartCapture = document.getElementById('btn-start-capture');
         if (btnStartCapture) btnStartCapture.disabled = false;
+        stopWebAudioMonitoring();
         log(`停止采集失败: ${error.message}`, 'error');
     }
 }
@@ -750,9 +896,9 @@ async function checkSpeakerPlayback(deviceTestPassed = true) {
     log('开始音频检测准备...', 'info');
     
     if (!deviceTestPassed) {
-        // addTestItem('audio-section', '麦克风状态', '异常', 'error');
-        // addTestItem('audio-section', '扬声器状态', '异常', 'error');
-        // setSectionIcon('audio', 'error');
+        addTestItem('audio-section', '麦克风状态', '异常', 'error');
+        addTestItem('audio-section', '扬声器状态', '异常', 'error');
+        setSectionIcon('audio', 'error');
         log('前置设备检测失败，音频检测标记为失败', 'error');
         return false;
     }
@@ -760,9 +906,9 @@ async function checkSpeakerPlayback(deviceTestPassed = true) {
     if (!engine) {
         const initialized = await initEngine();
         if (!initialized) {
-            // addTestItem('audio-section', '麦克风状态', '异常', 'error');
-            // addTestItem('audio-section', '扬声器状态', '异常', 'error');
-            // setSectionIcon('audio', 'error');
+            addTestItem('audio-section', '麦克风状态', '异常', 'error');
+            addTestItem('audio-section', '扬声器状态', '异常', 'error');
+            setSectionIcon('audio', 'error');
             return false;
         }
     }
