@@ -20,12 +20,9 @@ let playbackCompleteCheck = null;
 let hasPlaybackVolume = false;
 let lastPlaybackVolumeTime = 0;
 let isCaptureFailed = false;
-let isIPhone = false;
-let webAudioAnalyser = null;
-let webAudioContext = null;
-let webAudioSource = null;
-let hasWebAudioVolume = false;
-let webAudioAnimationId = null;
+let isMusicTestRunning = false;
+let musicPlaybackTimer = null;
+let hasMusicPlaybackVolume = false;
 
 function log(message, type = 'info') {
     const logContainer = document.getElementById('logContainer');
@@ -158,8 +155,11 @@ function resetAudioSection() {
     const playbackWaveContainer = document.getElementById('playback-wave-container');
     const playbackWaveLabel = document.getElementById('playback-wave-label');
     const audioTestButtons = document.getElementById('audio-test-buttons');
+    const musicTestButtons = document.getElementById('music-test-buttons');
     const btnStartCapture = document.getElementById('btn-start-capture');
     const btnStopCapture = document.getElementById('btn-stop-capture');
+    const btnStartMusic = document.getElementById('btn-start-music');
+    const btnStopMusic = document.getElementById('btn-stop-music');
     const btnPlay = document.getElementById('btn-play');
     
     if (captureWaveContainer) captureWaveContainer.style.display = 'none';
@@ -167,24 +167,36 @@ function resetAudioSection() {
     if (playbackWaveContainer) playbackWaveContainer.style.display = 'none';
     if (playbackWaveLabel) playbackWaveLabel.style.display = 'none';
     if (audioTestButtons) audioTestButtons.style.display = 'none';
+    if (musicTestButtons) musicTestButtons.style.display = 'none';
     if (btnStartCapture) btnStartCapture.disabled = false;
     if (btnStopCapture) btnStopCapture.disabled = true;
+    if (btnStartMusic) btnStartMusic.disabled = false;
+    if (btnStopMusic) btnStopMusic.disabled = true;
     if (btnPlay) btnPlay.disabled = true;
     
     stopCaptureAnimation();
     stopPlaybackAnimation();
-    stopWebAudioMonitoring();
     isDeviceTestRunning = false;
+    isMusicTestRunning = false;
     isCaptureTestSuccess = false;
     hasLocalAudioReport = false;
     hasPlaybackVolume = false;
-    hasWebAudioVolume = false;
+    hasMusicPlaybackVolume = false;
     lastPlaybackVolumeTime = 0;
     isCaptureFailed = false;
     if (playbackCompleteCheck) {
         clearInterval(playbackCompleteCheck);
         playbackCompleteCheck = null;
     }
+    if (musicPlaybackTimer) {
+        clearTimeout(musicPlaybackTimer);
+        musicPlaybackTimer = null;
+    }
+}
+
+function isIPhone() {
+    const ua = navigator.userAgent;
+    return ua.indexOf('iPhone') > -1;
 }
 
 function clearAllResults() {
@@ -276,6 +288,9 @@ async function initEngine() {
             if (!hasPlaybackVolume && volume > 10) {
                 hasPlaybackVolume = true;
             }
+            if (isMusicTestRunning && !hasMusicPlaybackVolume && volume > 10) {
+                hasMusicPlaybackVolume = true;
+            }
         });
 
         return true;
@@ -350,83 +365,6 @@ function getBrowserInfo() {
     }
 
     return { name: browserName, version: browserVersion, userAgent: ua };
-}
-
-function isIPhoneDevice() {
-    const ua = navigator.userAgent;
-    return ua.indexOf('iPhone') > -1 || ua.indexOf('iPad') > -1 || ua.indexOf('iPod') > -1;
-}
-
-function initWebAudio() {
-    try {
-        webAudioContext = new (window.AudioContext || window.webkitAudioContext)();
-        webAudioAnalyser = webAudioContext.createAnalyser();
-        webAudioAnalyser.fftSize = 256;
-        return true;
-    } catch (error) {
-        log(`Web Audio API 初始化失败: ${error.message}`, 'error');
-        return false;
-    }
-}
-
-function startWebAudioMonitoring(audioElement) {
-    try {
-        if (!webAudioContext) {
-            initWebAudio();
-        }
-        
-        if (!webAudioContext || !webAudioAnalyser) {
-            return;
-        }
-        
-        webAudioSource = webAudioContext.createMediaElementSource(audioElement);
-        webAudioSource.connect(webAudioAnalyser);
-        webAudioAnalyser.connect(webAudioContext.destination);
-        
-        hasWebAudioVolume = false;
-        analyseWebAudio();
-    } catch (error) {
-        log(`Web Audio 监控启动失败: ${error.message}`, 'error');
-    }
-}
-
-function analyseWebAudio() {
-    const bufferLength = webAudioAnalyser.frequencyBinCount;
-    const dataArray = new Uint8Array(bufferLength);
-    
-    function update() {
-        webAudioAnalyser.getByteFrequencyData(dataArray);
-        
-        let sum = 0;
-        for (let i = 0; i < bufferLength; i++) {
-            sum += dataArray[i];
-        }
-        const average = sum / bufferLength;
-        
-        const volume = Math.min(255, average * 2);
-        updateWaveBars('playback-wave-container', volume / 255);
-        
-        if (volume > 10 && !hasWebAudioVolume) {
-            hasWebAudioVolume = true;
-            log(`Web Audio 检测到音量: ${volume}`, 'info');
-        }
-        
-        webAudioAnimationId = requestAnimationFrame(update);
-    }
-    
-    update();
-}
-
-function stopWebAudioMonitoring() {
-    if (webAudioAnimationId) {
-        cancelAnimationFrame(webAudioAnimationId);
-        webAudioAnimationId = null;
-    }
-    
-    if (webAudioSource) {
-        webAudioSource.disconnect();
-        webAudioSource = null;
-    }
 }
 
 async function checkBrowserCompatibility() {
@@ -751,10 +689,6 @@ async function stopAudioCaptureAndPlay() {
     try {
         log('停止采集并开始播放...', 'info');
         
-        // 检测是否为 iPhone 设备
-        isIPhone = isIPhoneDevice();
-        log(`设备类型: ${isIPhone ? 'iPhone' : '其他设备'}`, 'info');
-        
         // 如果采集已经失败，直接设置状态为异常
         if (isCaptureFailed) {
             log('采集已失败，设置麦克风和扬声器状态为异常', 'info');
@@ -798,20 +732,6 @@ async function stopAudioCaptureAndPlay() {
             try {
                 await engine.stopAudioDeviceRecordAndPlayTest();
                 console.log('[返回] engine.stopAudioDeviceRecordAndPlayTest 成功');
-                
-                // 如果是 iPhone 设备，尝试使用 Web Audio API 监控音量
-                if (isIPhone) {
-                    log('检测到 iPhone 设备，使用 Web Audio API 监控播放音量', 'info');
-                    
-                    // 查找页面上的 audio 元素
-                    const audioElements = document.querySelectorAll('audio');
-                    if (audioElements.length > 0) {
-                        const audioElement = audioElements[0];
-                        startWebAudioMonitoring(audioElement);
-                    } else {
-                        log('未找到 audio 元素，无法使用 Web Audio API 监控', 'warning');
-                    }
-                }
             } catch (error) {
                 console.log('[错误] engine.stopAudioDeviceRecordAndPlayTest 失败:', error);
                 log(`SDK播放错误: ${error.message}`, 'error');
@@ -831,21 +751,12 @@ async function stopAudioCaptureAndPlay() {
         
         // 判定扬声器状态
         if (micStatus === '成功') {
-            // 等待一段时间让播放音量事件触发
-            await new Promise(resolve => setTimeout(resolve, 2000));
-            
-            // 根据设备类型使用不同的判定条件
-            if (isIPhone) {
-                log(`扬声器判定 (iPhone) - hasWebAudioVolume: ${hasWebAudioVolume}`, 'info');
-                
-                if (hasWebAudioVolume) {
-                    addTestItem('audio-section', '扬声器状态', '成功', 'success');
-                    setSectionIcon('audio', 'success');
-                } else {
-                    addTestItem('audio-section', '扬声器状态', '异常', 'error');
-                    setSectionIcon('audio', 'error');
-                }
+            if (isIPhone()) {
+                log('检测到 iPhone 设备，麦克风采集播放测试不用于扬声器判定', 'info');
             } else {
+                // 非 iPhone 设备，使用麦克风采集播放测试的音量判定扬声器状态
+                await new Promise(resolve => setTimeout(resolve, 2000));
+                
                 log(`扬声器判定 - hasPlaybackVolume: ${hasPlaybackVolume}`, 'info');
                 
                 if (hasPlaybackVolume) {
@@ -862,11 +773,6 @@ async function stopAudioCaptureAndPlay() {
             setSectionIcon('audio', 'error');
         }
         
-        // 停止 Web Audio 监控
-        if (isIPhone) {
-            stopWebAudioMonitoring();
-        }
-        
         // 重置状态，允许再次测试
         isDeviceTestRunning = false;
         const btnStartCapture = document.getElementById('btn-start-capture');
@@ -878,7 +784,6 @@ async function stopAudioCaptureAndPlay() {
         isDeviceTestRunning = false;
         const btnStartCapture = document.getElementById('btn-start-capture');
         if (btnStartCapture) btnStartCapture.disabled = false;
-        stopWebAudioMonitoring();
         log(`停止采集失败: ${error.message}`, 'error');
     }
 }
@@ -915,7 +820,12 @@ async function checkSpeakerPlayback(deviceTestPassed = true) {
     
     document.getElementById('audio-test-buttons').style.display = 'flex';
     
-    log('请点击"开始采集"按钮进行麦克风和扬声器测试', 'info');
+    if (isIPhone()) {
+        document.getElementById('music-test-buttons').style.display = 'flex';
+        log('检测到 iPhone 设备，请先点击"音乐播放测试"进行扬声器测试', 'info');
+    } else {
+        log('请点击"开始采集"按钮进行麦克风和扬声器测试', 'info');
+    }
 }
 
 async function startDetection() {
@@ -1227,5 +1137,130 @@ async function checkConnectivity() {
         setSectionIcon('connectivity', 'error');
         console.log('=== 连通性检测完成 ===');
         await stopConnectivityTest();
+    }
+}
+
+async function startMusicPlaybackTest() {
+    try {
+        log('开始音乐播放测试...', 'info');
+        
+        if (isMusicTestRunning) {
+            log('音乐播放测试已在运行中，请先停止', 'warning');
+            return;
+        }
+        
+        if (!engine) {
+            const initialized = await initEngine();
+            if (!initialized) {
+                throw new Error('引擎初始化失败');
+            }
+        }
+        
+        const btnStartMusic = document.getElementById('btn-start-music');
+        const btnStopMusic = document.getElementById('btn-stop-music');
+        const playbackWaveContainer = document.getElementById('playback-wave-container');
+        const playbackWaveLabel = document.getElementById('playback-wave-label');
+        
+        if (btnStartMusic) btnStartMusic.disabled = true;
+        if (btnStopMusic) btnStopMusic.disabled = false;
+        if (playbackWaveContainer) playbackWaveContainer.style.display = 'flex';
+        if (playbackWaveLabel) playbackWaveLabel.style.display = 'block';
+        initWaveBars('playback-wave-container', 'playback');
+        
+        isMusicTestRunning = true;
+        hasMusicPlaybackVolume = false;
+        
+        console.log('[调用] engine.initAudioPlaybackDeviceForTest');
+        try {
+            await engine.initAudioPlaybackDeviceForTest();
+            console.log('[返回] engine.initAudioPlaybackDeviceForTest 成功');
+        } catch (error) {
+            console.log('[错误] engine.initAudioPlaybackDeviceForTest 失败:', error);
+            log(`初始化播放设备失败: ${error.message}`, 'error');
+            throw error;
+        }
+        
+        const testAudioFilePath = 'http://music.163.com/song/media/outer/url?id=447925558.mp3';
+        
+        console.log('[调用] engine.startAudioPlaybackDeviceTest, 参数:', testAudioFilePath);
+        try {
+            await engine.startAudioPlaybackDeviceTest(testAudioFilePath);
+            console.log('[返回] engine.startAudioPlaybackDeviceTest 成功');
+            log('音乐播放测试已开始', 'success');
+        } catch (error) {
+            console.log('[错误] engine.startAudioPlaybackDeviceTest 失败:', error);
+            log(`开始音乐播放失败: ${error.message}`, 'error');
+            throw error;
+        }
+        
+        musicPlaybackTimer = setTimeout(() => {
+            log('音乐播放测试已达10秒，自动停止', 'info');
+            stopMusicPlaybackTest();
+        }, 10000);
+        
+    } catch (error) {
+        isMusicTestRunning = false;
+        if (musicPlaybackTimer) {
+            clearTimeout(musicPlaybackTimer);
+            musicPlaybackTimer = null;
+        }
+        const btnStartMusic = document.getElementById('btn-start-music');
+        const btnStopMusic = document.getElementById('btn-stop-music');
+        if (btnStartMusic) btnStartMusic.disabled = false;
+        if (btnStopMusic) btnStopMusic.disabled = true;
+        log(`音乐播放测试失败: ${error.message}`, 'error');
+    }
+}
+
+async function stopMusicPlaybackTest() {
+    try {
+        log('停止音乐播放测试...', 'info');
+        
+        if (musicPlaybackTimer) {
+            clearTimeout(musicPlaybackTimer);
+            musicPlaybackTimer = null;
+        }
+        
+        if (engine && isMusicTestRunning) {
+            console.log('[调用] engine.stopAudioPlaybackDeviceTest');
+            try {
+                await engine.stopAudioPlaybackDeviceTest();
+                console.log('[返回] engine.stopAudioPlaybackDeviceTest 成功');
+            } catch (error) {
+                console.log('[错误] engine.stopAudioPlaybackDeviceTest 失败:', error);
+                log(`停止音乐播放失败: ${error.message}`, 'error');
+            }
+        }
+        
+        isMusicTestRunning = false;
+        
+        const btnStartMusic = document.getElementById('btn-start-music');
+        const btnStopMusic = document.getElementById('btn-stop-music');
+        if (btnStartMusic) btnStartMusic.disabled = false;
+        if (btnStopMusic) btnStopMusic.disabled = true;
+        
+        await new Promise(resolve => setTimeout(resolve, 1000));
+        
+        log(`音乐播放测试 - hasMusicPlaybackVolume: ${hasMusicPlaybackVolume}`, 'info');
+        
+        if (hasMusicPlaybackVolume) {
+            addTestItem('audio-section', '扬声器状态', '成功', 'success');
+            setSectionIcon('audio', 'success');
+            log('扬声器测试成功', 'success');
+        } else {
+            addTestItem('audio-section', '扬声器状态', '异常', 'error');
+            setSectionIcon('audio', 'error');
+            log('扬声器测试失败', 'error');
+        }
+        
+        log('音乐播放测试已停止', 'success');
+        
+    } catch (error) {
+        isMusicTestRunning = false;
+        const btnStartMusic = document.getElementById('btn-start-music');
+        const btnStopMusic = document.getElementById('btn-stop-music');
+        if (btnStartMusic) btnStartMusic.disabled = false;
+        if (btnStopMusic) btnStopMusic.disabled = true;
+        log(`停止音乐播放测试失败: ${error.message}`, 'error');
     }
 }
