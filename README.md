@@ -8,7 +8,7 @@
 - 检测浏览器名称和版本
 - 检查 `RTCPeerConnection` 支持
 - 检查 `getUserMedia` 支持
-- 检测 SDP、SRTP、UDP、TCP 协议支持
+- 检测 SDP、SRTP、UDP协议支持
 
 ### 设备获取能力检测
 - 枚举麦克风、扬声器和摄像头设备
@@ -92,25 +92,19 @@ npm run serve
 2. 点击「开始连通性测试」
 3. 观察本地预览和推流状态
 4. 测试完成后点击「停止测试」
-5. 可点击「保存SDK日志」下载日志文件
+
 
 ## 协议检测方法说明
 
 ### SDP 协议（会话描述协议）
-- **检测方法**：检查 `RTCPeerConnection.createOffer` 方法是否存在
 - **原理**：createOffer 是生成 SDP 的核心方法，存在即表示支持 SDP 协议
 
 ### SRTP 协议（安全实时传输协议）
-- **检测方法**：检查 `RTCPeerConnection.setConfiguration` 方法是否存在
 - **原理**：setConfiguration 可以用来配置加密参数，支持该方法通常意味着浏览器支持 SRTP
 
 ### UDP 协议（用户数据报协议）
-- **检测方法**：默认支持
 - **说明**：WebRTC 通过 ICE 框架自动选择传输协议，现代浏览器都支持 UDP 作为首选传输协议
 
-### TCP 协议（传输控制协议）
-- **检测方法**：默认支持
-- **说明**：WebRTC 也支持 TCP 作为备用传输协议（当 UDP 不可用时），现代浏览器都支持
 
 
 ## 注意事项
